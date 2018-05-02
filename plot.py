@@ -1,4 +1,4 @@
-#!/sas5/home/jiangdawei/python3/bin/python3
+#!/usr/bin/python3
 import argparse
 import pandas as pd
 import numpy as np

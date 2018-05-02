@@ -1,4 +1,4 @@
-#!/sas5/home/jiangdawei/python3/bin/python3
+#!/usr/bin/python3
 # ----------------------------------------------------------------------------
 # The PCoA method is modified from scikit-bio.
 # jiangdawei@icarbonx.com
