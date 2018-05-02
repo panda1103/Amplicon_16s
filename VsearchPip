@@ -1,0 +1,90 @@
+#########################################################################
+# File Name: work.sh
+# Author: jdw
+# mail: jiangdawei@icarbonx.com
+# Created Time: Wed 24 Jan 2018 01:12:41 PM CST
+#########################################################################
+#!/bin/bash
+if [ $# -lt 2 ]
+then 
+        echo "Usage: $0 [fastq dir] [Outdir] "
+        exit 1
+fi
+basepath=$(cd `dirname $0`;pwd)
+database=$basepath/16Sdatabase
+usearch=$basepath/usearch10
+vsearch=$basepath/vsearch
+deal_tax=$basepath/deal_tax.pl
+mergefq=$1
+outdir=$2
+log=$outdir/log
+fa=$outdir/fa
+otu=$outdir/otu
+alpha=$outdir/alpha
+beta=$outdir/beta/
+otutree=$outdir/otutree
+tax=$outdir/tax
+
+
+
+mkdir -p $outdir $log $fa $otu $alpha $beta $otutree $tax
+
+# Quality filter
+$vsearch --fastq_filter $mergefq --fastq_maxee 1  --fastaout $fa/filter.fa   1>$log/fastq_filter.log 2>$log/fastq_filter.err
+
+# Find unique read sequences and abundances
+$vsearch --rereplicate  $fa/filter.fa --sizeout --relabel Uniq --output $fa/uniques.fa  1>$log/fastx_uniques.log 2>$log/fastx_uniques.err
+
+# Make 97% OTUs and filter chimeras
+$vsearch --cluster_size  $fa/uniques.fa --centroids  $fa/raw_otus.fa --sizeout --relabel Otu --id 0.97  1>$log/cluster_otus.log 2>$log/cluster_otus.err
+
+# Filter chimeras
+$vsearch --uchime_denovo $fa/raw_otus.fa --nonchimeras $fa/filter_otus.fa
+cat $fa/filter_otus.fa |sed 's/;size=.*;//' >  $fa/otus.fa
+rm $fa/filter_otus.fa
+
+# Predict taxonomy
+$usearch -sintax $fa/otus.fa -db $database/rdp_16s_v16_sp  -strand both -tabbedout $tax/rdp_sintax.txt -sintax_cutoff 0.8  1>$log/rdp_sintax.log 2>$log/rdp_sintax.err
+awk '{if($4){print $0}}' $tax/rdp_sintax.txt > $tax/sintax_filtered.txt 
+awk '{if(!$4){print $1"\tUnassigned"}}' $tax/rdp_sintax.txt > $tax/otu_cutoff.txt
+
+# Make OTU table
+$vsearch --usearch_global  $fa/filter.fa  --db  $fa/otus.fa  --id 0.97  --otutabout  $otu/otutab_raw.txt --threads 56 1>$log/otutab.log 2>$log/otutab.err
+
+# Filter low frequence OTU
+$usearch -otutab_trim $otu/otutab_raw.txt -min_count 2 -output $otu/otutab_trim_count.txt 1>$log/otutab_trim.log 2>$log/otutab_trim.err
+if [ ! -s  $tax/otu_cutoff.txt ];then
+        cp $otu/otutab_trim_count.txt $otu/otutab_trimmed.txt
+else
+        awk 'NR==FNR{arr[$1]=$0}NR>FNR{if(!arr[$1]){print $0}}' $tax/otu_cutoff.txt  $otu/otutab_trim_count.txt > $otu/otutab_trimmed.txt
+fi
+
+# Taxonomy summary reports
+$usearch --sintax_summary $tax/sintax_filtered.txt --otutabin $otu/otutab_trimmed.txt --rank s --output $tax/species_summary_raw.txt  1>$log/sintax_summary_s.log 2>$log/sintax_summary_s.err
+$deal_tax $tax/species_summary_raw.txt  $tax/species_summary.txt
+$usearch --sintax_summary $tax/sintax_filtered.txt --otutabin $otu/otutab_trimmed.txt --rank g --output $tax/genus_summary_raw.txt  1>$log/sintax_summary_g.log 2>$log/sintax_summary_g.err
+$deal_tax $tax/genus_summary_raw.txt  $tax/genus_summary.txt
+$usearch --sintax_summary $tax/sintax_filtered.txt --otutabin $otu/otutab_trimmed.txt --rank f --output $tax/family_summary_raw.txt  1>$log/sintax_summary_f.log 2>$log/sintax_summary_f.err
+$deal_tax $tax/family_summary_raw.txt  $tax/family_summary.txt
+$usearch --sintax_summary $tax/sintax_filtered.txt --otutabin $otu/otutab_trimmed.txt --rank o --output $tax/order_summary_raw.txt  1>$log/sintax_summary_o.log 2>$log/sintax_summary_o.err
+$deal_tax $tax/order_summary_raw.txt  $tax/order_summary.txt
+$usearch --sintax_summary $tax/sintax_filtered.txt --otutabin $otu/otutab_trimmed.txt --rank c --output $tax/class_summary_raw.txt  1>$log/sintax_summary_c.log 2>$log/sintax_summary_c.err
+$deal_tax $tax/class_summary_raw.txt  $tax/class_summary.txt
+$usearch --sintax_summary $tax/sintax_filtered.txt --otutabin $otu/otutab_trimmed.txt --rank p --output $tax/phylum_summary_raw.txt  1>$log/sintax_summary_p.log 2>$log/sintax_summary_p.err
+$deal_tax $tax/phylum_summary_raw.txt  $tax/phylum_summary.txt
+
+# Target Species
+awk 'NR==FNR{arr[$0]=$0}NR>FNR{if($1~/^Species/||arr[$1]){print $0}}'  $database/target.list  $tax/species_summary.txt  > $tax/target_species.txt
+
+# Alpha diversity
+$usearch --alpha_div $otu/otutab_raw.txt --output $alpha/alpha.txt 1>$log/alpha_div.log 2>$log/alpha_div.err
+
+# Rarefaction
+$usearch --alpha_div_rare $otu/otutab_raw.txt  --method without_replacement --output $alpha/rare_raw.txt 1>$log/rare.log 2>$log/rare.err
+
+# Make OTU tree
+$usearch --cluster_agg $fa/otus.fa --treeout $otutree/otus.tree 1>$log/cluster_agg.log 2>$log/cluster_agg.err
+
+# Beta diversity
+$usearch --beta_div $otu/otutab_raw.txt --tree $otutree/otus.tree --filename_prefix $beta  1>$log/beta_div.log 2>$log/beta_div.err
+

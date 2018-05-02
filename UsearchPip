@@ -1,0 +1,133 @@
+#########################################################################
+# File Name: work.sh
+# Author: jdw
+# mail: jiangdawei@icarbonx.com
+# Created Time: Wed 24 Jan 2018 01:12:41 PM CST
+#########################################################################
+#!/bin/bash
+if [ $# -lt 2 ]
+then 
+        echo "Usage: $0 [fastq dir] [Outdir] "
+        exit 1
+fi
+basepath=$(cd `dirname $0`;pwd)
+database=$basepath/16Sdatabase
+usearch=$basepath/usearch10
+deal_tax=$basepath/deal_tax.pl
+mergefq=$1
+outdir=$2
+log=$outdir/log
+fa=$outdir/fa
+otu=$outdir/otu
+alpha=$outdir/alpha
+beta=$outdir/beta/
+otutree=$outdir/otutree
+tax=$outdir/tax
+
+
+
+mkdir -p $outdir $log $fa $otu $alpha $beta $otutree $tax
+
+# Quality filter
+echo "Quality filter Start at: "`date`
+echo "$usearch -fastq_filter $mergefq -fastq_maxee 1.0  -fastaout $fa/filtered.fa -relabel Filt "
+$usearch -fastq_filter $mergefq -fastq_maxee 1.0  -fastaout $fa/filtered.fa -relabel Filt  1>$log/fastq_filter.log 2>$log/fastq_filter.err
+echo "End at: "`date`
+
+# Find unique read sequences and abundances
+echo "Find unique read sequences and abundances Start at: "`date`
+echo "$usearch -fastx_uniques  $fa/filtered.fa -sizeout -relabel Uniq -fastaout $fa/uniques.fa"
+$usearch -fastx_uniques  $fa/filtered.fa -sizeout -relabel Uniq -fastaout $fa/uniques.fa  1>$log/fastx_uniques.log 2>$log/fastx_uniques.err
+echo "End at: "`date`
+
+# Make 97% OTUs and filter chimeras
+echo "Make 97% OTUs and filter chimeras Start at: "`date`
+echo "$usearch -cluster_otus $fa/uniques.fa -otus $fa/otus.fa -relabel Otu"
+$usearch -cluster_otus $fa/uniques.fa -otus $fa/otus.fa -relabel Otu 1>$log/cluster_otus.log 2>$log/cluster_otus.err
+echo "End at: "`date`
+
+# Denoise: predict biological sequences and filter chimeras
+echo "Denoise: predict biological sequences and filter chimeras Start at: "`date`
+echo "$usearch -unoise3 $fa/uniques.fa -zotus $fa/zotus.fa"
+$usearch -unoise3 $fa/uniques.fa -zotus $fa/zotus.fa  1>$log/unoise3.log 2>$log/unoise3.err
+echo "End at :"`date`
+
+# Make OTU table
+echo "Make OTU table: Start at: "
+echo "$usearch -otutab $mergefq  -otus $fa/otus.fa -otutabout $otu/otutab_raw.txt"
+$usearch -otutab $mergefq  -otus $fa/otus.fa -otutabout $otu/otutab_raw.txt  1>$log/otutab.log 2>$log/otutab.err
+echo "End at :"`date`
+
+# Make ZOTU table
+echo "Make ZOTU table Start at: "`date`
+echo "$usearch -otutab $mergefq  -zotus $fa/zotus.fa -otutabout $otu/zotutab_raw.txt"
+$usearch -otutab $mergefq  -zotus $fa/zotus.fa -otutabout $otu/zotutab_raw.txt  1>$log/zotutab.log 2>$log/zotutab.err
+echo "End at :"`date`
+
+#Filter low frequence OTU
+echo "Filter low frequence OTU Start at :"`date`
+echo "$usearch -otutab_trim $otu/otutab_raw.txt -min_otu_freq 0.001 -output $otu/otutab_trimmed.txt"
+$usearch -otutab_trim $otu/otutab_raw.txt -min_otu_freq 0.001 -output $otu/otutab_trimmed.txt 1>$log/otutab_trim.log 2>$log/otutab_trim.err
+echo "End at :"`date`
+
+# Normalize to 10k reads / sample
+echo "Normalize to 10k reads / sample Start at :"`date`
+echo "$usearch -otutab_norm $otu/otutab_trimmed.txt -sample_size 10000 -output $otu/otutab_norm.txt"
+$usearch -otutab_norm $otu/otutab_trimmed.txt -sample_size 10000 -output $otu/otutab_norm.txt  1>$log/otutab_norm.log 2>$log/otutab_norm.err
+echo "End at :"`date`
+
+#Get otutab otu subset
+#echo "Get otutab otu subset"`date`
+#cat $otu/otutab_norm.txt |cut -f 1 |grep -v '^#' > $otu/otutab_norm.id
+#perl -e 'open IN,$ARGV[0];$/=">";while(<IN>){chomp;if(/Otu25\n/){print ">$_";}}' 
+#echo "End at :"`date`
+
+# Alpha diversity
+echo "Alpha diversity Start at :"`date`
+echo "$usearch -alpha_div $otu/otutab_norm.txt -output $alpha/alpha.txt"
+$usearch -alpha_div $otu/otutab_norm.txt -output $alpha/alpha.txt 1>$log/alpha_div.log 2>$log/alpha_div.err
+echo "End at :"`date`
+
+# Rarefaction
+echo "Rarefaction Start at :"`date`
+echo "$usearch -alpha_div_rare $otu/otutab..."
+$usearch -alpha_div_rare $otu/otutab_raw.txt  -method without_replacement -output $alpha/rare_raw.txt 1>$log/rare.log 2>$log/rare.err
+echo "End at :"`date`
+
+# Make OTU tree
+echo "Make OTU tree Start at :"`date`
+echo "$usearch -cluster_agg $fa/otus.fa -treeout $otutree/otus.tree"
+$usearch -cluster_agg $fa/otus.fa -treeout $otutree/otus.tree 1>$log/cluster_agg.log 2>$log/cluster_agg.err
+echo "End at :"`date`
+
+# Beta diversity
+echo "Beta diversity Start at :"`date`
+echo "$usearch -beta_div $otu/otutab_norm.txt -tree $otutree/otus.tree -filename_prefix $beta"
+$usearch -beta_div $otu/otutab_norm.txt -tree $otutree/otus.tree -filename_prefix $beta  1>$log/beta_div.log 2>$log/beta_div.err
+echo "End at :"`date`
+
+# Predict taxonomy
+echo "Predict taxonomy Start at :"`date`
+echo "$usearch -sintax $fa/otus.fa -db $database/rdp_16s_v16_sp  -strand both -tabbedout $tax/rdp_sintax.txt -sintax_cutoff 0.8"
+echo "awk '{if($4){print $0}}' $tax/rdp_sintax.txt > $tax/sintax_filtered.txt "
+$usearch -sintax $fa/otus.fa -db $database/rdp_16s_v16_sp  -strand both -tabbedout $tax/rdp_sintax.txt -sintax_cutoff 0.8  1>$log/rdp_sintax.log 2>$log/rdp_sintax.err
+awk '{if($4){print $0}}' $tax/rdp_sintax.txt > $tax/sintax_filtered.txt 
+echo "End at :"`date`
+
+# Taxonomy summary reports
+echo "Taxonomy summary reports Start at :"`date`
+echo "$usearch -sintax_summary $tax/sintax_filtered.txt -otutabin $tax/otutab_norm.txt -rank g..."
+$usearch -sintax_summary $tax/sintax_filtered.txt -otutabin $otu/otutab_norm.txt -rank s -output $tax/species_summary_raw.txt  1>$log/sintax_summary_g.log 2>$log/sintax_summary_g.err
+$deal_tax $tax/species_summary_raw.txt  $tax/species_summary.txt
+$usearch -sintax_summary $tax/sintax_filtered.txt -otutabin $otu/otutab_norm.txt -rank g -output $tax/genus_summary_raw.txt  1>$log/sintax_summary_g.log 2>$log/sintax_summary_g.err
+$deal_tax $tax/genus_summary_raw.txt  $tax/genus_summary.txt
+$usearch -sintax_summary $tax/sintax_filtered.txt -otutabin $otu/otutab_norm.txt -rank f -output $tax/family_summary_raw.txt  1>$log/sintax_summary_f.log 2>$log/sintax_summary_f.err
+$deal_tax $tax/family_summary_raw.txt  $tax/family_summary.txt
+$usearch -sintax_summary $tax/sintax_filtered.txt -otutabin $otu/otutab_norm.txt -rank o -output $tax/order_summary_raw.txt  1>$log/sintax_summary_o.log 2>$log/sintax_summary_o.err
+$deal_tax $tax/order_summary_raw.txt  $tax/order_summary.txt
+$usearch -sintax_summary $tax/sintax_filtered.txt -otutabin $otu/otutab_norm.txt -rank c -output $tax/class_summary_raw.txt  1>$log/sintax_summary_c.log 2>$log/sintax_summary_c.err
+$deal_tax $tax/class_summary_raw.txt  $tax/class_summary.txt
+$usearch -sintax_summary $tax/sintax_filtered.txt -otutabin $otu/otutab_norm.txt -rank p -output $tax/phylum_summary_raw.txt  1>$log/sintax_summary_p.log 2>$log/sintax_summary_p.err
+$deal_tax $tax/phylum_summary_raw.txt  $tax/phylum_summary.txt
+echo "End at :"`date`
+

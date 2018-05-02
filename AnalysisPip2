@@ -1,0 +1,34 @@
+#########################################################################
+# File Name: test.sh
+# Author: jdw
+# mail: jiangdawei@icarbonx.com
+# Created Time: Wed 24 Jan 2018 05:04:22 PM CST
+#########################################################################
+#!/bin/bash
+
+if [ $# -lt 3 ]
+then
+        echo "Usage: $0 [Sample list] [Fastq Indir] [Outdir] "
+        exit 1
+fi
+
+SampleList=$1
+fqdir=$2
+outdir=$3
+mergedir=$outdir/merge
+mkdir -p $outdir $mergedir
+
+basepath=$(cd `dirname $0`;pwd)
+MergeFq=$basepath/MergeFq
+VsearchPip=$basepath/VsearchPip
+plot=$basepath/plot.py
+pcoa=$basepath/pcoa.py
+
+echo "Start merge pair reads: "`date`
+$MergeFq  $SampleList  $fqdir	$mergedir
+echo "Start usearch analysis: "`date`
+$VsearchPip  $mergedir/all.merged.fq  $outdir
+echo "Start Result visualization: "`date`
+$plot --path $outdir 
+echo "Start PCoA analysis: "`date`
+$pcoa --distance_file $outdir/beta/unifrac.txt --distance_type unifrac --outfile_prefix $outdir/beta/unifrac --group_file $SampleList --group_lable group

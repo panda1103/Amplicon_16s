@@ -1,0 +1,27 @@
+#########################################################################
+# File Name: SplitPip.sh
+# Author: jdw
+# mail: jiangdawei@icarbonx.com
+# Created Time: Thu 01 Feb 2018 04:00:34 PM CST
+#########################################################################
+#!/bin/bash
+if [ $# -lt 4 ]
+then
+        echo "Usage: $0 [Read1_Fastq.gz] [Read2_Fastq.gz] [Barcode to Sample list] [Outdir] [minratio:default 0.81]"
+        exit 1
+fi
+basepath=$(cd `dirname $0`;pwd)
+barcode=$basepath/barcode.py
+fq1=$1
+fq2=$2
+barcode2sample=$3
+outdir=$4
+
+if [ $5 ]
+        then minratio=$5
+else
+        minratio=0.81
+fi
+primerfile=$basepath/primerfile.txt
+barcodefile=$basepath/barcode_Spacer.txt
+$barcode --fq1 $fq1  --fq2  $fq2  --barcodefile  $barcodefile  --primerfile  $primerfile  --samplefile  $barcode2sample  --minratio  $minratio  --low_quality_threshold 20 --high_quality_percent 0.70 --outpath $outdir

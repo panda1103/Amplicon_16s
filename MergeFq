@@ -1,0 +1,30 @@
+#########################################################################
+# File Name: work.sh
+# Author: jdw
+# mail: jiangdawei@icarbonx.com
+# Created Time: Wed 24 Jan 2018 01:12:41 PM CST
+#########################################################################
+#!/bin/bash
+if [ $# -lt 3 ]
+then
+        echo "Usage: $0 [Sample list] [Faste Indir] [Merged Fasetq Outdir] "
+        exit 1
+fi
+basepath=$(cd `dirname $0`;pwd)
+usearch=$basepath/usearch10
+SampleList=$1
+indir=$2
+outdir=$3
+# Merge paired reads
+# Add sample name to read label (-relabel option)
+# Pool samples together in raw.fq (Linux cat command)
+mkdir -p $outdir
+log=$outdir/log
+mkdir -p $log
+rm -rf $outdir/all.merged.fq
+for Sample in `cat  ${SampleList} |grep -v '^#sample'| cut -f 1`
+do
+	$usearch  -fastq_mergepairs $indir/${Sample}*_R1.fq  -fastqout $outdir/$Sample.merged.fq -relabel $Sample. 1>$log/$Sample.merge.log 2>&1
+	cat $outdir/$Sample.merged.fq >> $outdir/all.merged.fq 
+	rm -rf $outdir/$Sample.merged.fq
+done
